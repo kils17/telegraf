@@ -634,19 +634,33 @@ func (c *CiscoTelemetryMDT) parseContentField(grouper *metric.SeriesGrouper, fie
 	} else if nxRows != nil {
 		// NXAPI structure: https://developer.cisco.com/docs/cisco-nexus-9000-series-nx-api-cli-reference-release-9-2x/
 		for _, row := range nxRows.Fields {
-			for i, subfield := range row.Fields {
-				if i == 0 { // First subfield contains the index, promote it from value to tag
-					tags[prefix] = decodeTag(subfield)
-					//We can have subfield so recursively handle it.
-					if len(row.Fields) == 1 {
+			// In case of 'show processes memory', promote 'process' from value to tag
+			if nxRows.Name == "ROW_process_memory" {
+				// 6th subfield (process) contains the index, promote it from value to tag
+				tags[prefix] = decodeTag(row.Fields[5])
+				for i, subfield := range row.Fields {
+					// make rows except for 6th subfield (process)
+					if i < 5 {
+						c.parseContentField(grouper, subfield, "", encodingPath, tags, timestamp)
+						// Nxapi we can't identify keys always from prefix
 						tags["row_number"] = strconv.FormatInt(int64(i), 10)
+					}
+				}
+			} else {
+				for i, subfield := range row.Fields {
+					if i == 0 { // First subfield contains the index, promote it from value to tag
+						tags[prefix] = decodeTag(subfield)
+						//We can have subfield so recursively handle it.
+						if len(row.Fields) == 1 {
+							tags["row_number"] = strconv.FormatInt(int64(i), 10)
+							c.parseContentField(grouper, subfield, "", encodingPath, tags, timestamp)
+						}
+					} else {
 						c.parseContentField(grouper, subfield, "", encodingPath, tags, timestamp)
 					}
-				} else {
-					c.parseContentField(grouper, subfield, "", encodingPath, tags, timestamp)
+					// Nxapi we can't identify keys always from prefix
+					tags["row_number"] = strconv.FormatInt(int64(i), 10)
 				}
-				// Nxapi we can't identify keys always from prefix
-				tags["row_number"] = strconv.FormatInt(int64(i), 10)
 			}
 			delete(tags, prefix)
 		}
